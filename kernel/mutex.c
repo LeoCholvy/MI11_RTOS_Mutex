@@ -71,26 +71,54 @@ void m_release(int id_mutex) {
         _mutex[id_mutex].count--;
 
         if (_mutex[id_mutex].count == 0) {
-            // Restauration de la priorité de base une fois le mutex libéré
+            // 1. Restauration de la priorité de base de la tâche qui lâche le mutex
             int base_prio = noyau_get_t_base_prio(current_task);
             if (noyau_get_t_prio(current_task) != base_prio) {
                 noyau_set_t_prio(current_task, base_prio);
             }
 
-            // Donner le mutex à la prochaine tâche en attente
-            uint8_t next_task;
-            if (fifo_retire(&(_mutex[id_mutex].file), &next_task) == -1) {
-                _mutex[id_mutex].owner = next_task;
+            // 2. Recherche de la tâche la plus prioritaire dans la FIFO
+            int nb_waiting = _mutex[id_mutex].file.fifo_taille;
+
+            if (nb_waiting > 0) {
+                int best_task = -1;
+                int best_prio = 255; // Une priorité volontairement très mauvaise au départ
+
+                // On vide la file un par un pour trouver le meilleur
+                for (int i = 0; i < nb_waiting; i++) {
+                    uint8_t temp_task;
+                    fifo_retire(&(_mutex[id_mutex].file), &temp_task);
+
+                    int task_prio = noyau_get_t_prio(temp_task);
+
+                    if (task_prio < best_prio) { // (Rappel : 0 est la meilleure priorité)
+                        // Si on avait un "meilleur" précédent, il a perdu, on le remet dans la file
+                        if (best_task != -1) {
+                            fifo_ajoute(&(_mutex[id_mutex].file), best_task);
+                        }
+                        // On sauvegarde le nouveau champion
+                        best_task = temp_task;
+                        best_prio = task_prio;
+                    } else {
+                        // Pas le meilleur, on le remet à la fin de la file immédiatement
+                        fifo_ajoute(&(_mutex[id_mutex].file), temp_task);
+                    }
+                }
+
+                // À la fin de cette boucle, best_task est le grand gagnant (HIGH)
+                // et la FIFO contient toujours les autres (MED).
+                _mutex[id_mutex].owner = best_task;
                 _mutex[id_mutex].count = 1;
-                reveille(next_task);
+                reveille(best_task);
+
             } else {
-                _mutex[id_mutex].owner = -1; // Plus personne n'attend
+                // Personne n'attendait le mutex
+                _mutex[id_mutex].owner = -1;
             }
         }
     }
     _unlock_();
 }
-
 void m_destroy(int id_mutex) {
     _lock_();
     if (_mutex[id_mutex].owner == -1) {

@@ -363,7 +363,7 @@ void noyau_set_t_prio(int id_tache, int prio) {
 
     // Si la tâche est dans un tourniquet (donc PRET), il faut la retirer
     // temporairement pour l'insérer dans le tourniquet de sa nouvelle priorité
-    if (p->status == PRET) {
+    if (p->status == PRET || p->status == EXEC) {
         file_retire(id_tache);
         p->prio_actuelle = prio;
         file_ajoute(id_tache);
