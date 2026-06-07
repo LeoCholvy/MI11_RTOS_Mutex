@@ -155,11 +155,11 @@ uint8_t _timer_event = 0;          /* variable de détection d'appel SYSTICK */
     p->status = CREE; 
 
     // --- AJOUTS POUR PRIORITÉS DYNAMIQUES ---
-       p->id = id;
-       p->prio_base = prio;
-       p->prio_actuelle = prio;
-       p->id_suivant = MAX_TACHES_NOYAU; // Hors file pour le moment
-       // ----------------------------------------
+    p->id = id;
+    p->prio_base = prio;
+    p->prio_actuelle = prio;
+    p->id_suivant = MAX_TACHES_NOYAU; // Hors file pour le moment
+    // ----------------------------------------
 
     /* Q2.21 : fin section critique */
     _unlock_(); 

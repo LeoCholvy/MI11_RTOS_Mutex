@@ -60,7 +60,7 @@ void file_retire(uint16_t id) {
             tcb_prev = noyau_get_p_tcb(prev);
         }
 
-        tcb_prev->id_suivant = tcb->id_suivant; // On court-circuite la tâche à retirer
+        tcb_prev->id_suivant = tcb->id_suivant; // On veille à l'intégrité de la liste chainée
 
         if (_tetes[prio] == id) {
             _tetes[prio] = tcb->id_suivant; // Si c'était la tête, la suivante devient la tête
@@ -88,6 +88,7 @@ void file_affiche_queue(void) {
     }
 }
 
+// sert uniquement à respecter le prototypage
 void file_affiche(void) {
-    // Non requis strictement pour le fonctionnement, gardé vide pour respecter le prototype
+
 }
