@@ -39,38 +39,45 @@ TACHE tacheRecursif(void *arg) {
 }
 
 /* ========================================================================= *
- * PHASE 2 : HÉRITAGE DE PRIORITÉ ET ORDRE DE LA FILE D'ATTENTE
+ * PHASE 2 : TEST DE L'INVERSION ET DE L'HERITAGE DE PRIORITE
  * ========================================================================= */
 TACHE tacheLow(void *arg) {
-    delay(20); // Démarre au tic 20
-    printf("\n\n--- PHASE 2 : HERITAGE ET FILE D'ATTENTE ---");
+    delay(20);
+    printf("\n\n--- PHASE 2 : HERITAGE DE PRIORITE ---");
     printf("\n[LOW-6] Prend le mutex.");
     m_acquire(mutex_dyn);
 
-    // LOW s'endort avec le mutex jusqu'au tic 60.
-    // Pendant ce temps, MED et HIGH vont arriver et se bloquer.
-    delay(40);
+    // On augmente drastiquement la boucle pour s'assurer que LOW
+    // se fasse rattraper par le réveil de MED et HIGH
+    for (int i = 0; i < 20; i++) {
+        busy_wait(20000000);
+        // L'affichage de la priorité ici va te prouver l'héritage !
+        printf("\n[LOW] (Prio %d) Travaille dans la zone critique...", noyau_get_t_prio(noyau_get_tc()));
+    }
 
-    printf("\n[LOW-6] Je me reveille (Ma prio actuelle est %d). Je relache le mutex.", noyau_get_t_prio(noyau_get_tc()));
+    printf("\n[LOW-6] Zone critique terminee. Je relache le mutex.");
     m_release(mutex_dyn);
     while(1) { delay(1000); }
 }
 
 TACHE tacheMed(void *arg) {
-    delay(30);
-    printf("\n[MED-3] Arrive en 1er dans la file du mutex.");
-    m_acquire(mutex_dyn);
-    printf("\n[MED-3] Mutex acquis !");
-    m_release(mutex_dyn);
-    while(1) { delay(1000); }
+    delay(22); // <-- MED se réveille presque tout de suite après LOW
+    printf("\n[MED-3] Arrive et tente de monopoliser le CPU !");
+
+    while(1) {
+        busy_wait(20000000);
+        printf("\n[MED] Execute...");
+    }
 }
 
 TACHE tacheHigh(void *arg) {
-    delay(40);
-    printf("\n[HIGH-1] Arrive en 2eme dans la file du mutex.");
+    delay(25); // <-- HIGH se réveille juste après, pendant que MED monopolise
+    printf("\n[HIGH-1] Arrive et bloque sur le mutex detenu par LOW.");
+
     m_acquire(mutex_dyn);
-    printf("\n[HIGH-1] Mutex acquis en PREMIER grace au tri de la file !");
+    printf("\n[HIGH-1] Mutex acquis ! LOW a bien ete boostee pour me le rendre.");
     m_release(mutex_dyn);
+
     while(1) { delay(1000); }
 }
 

@@ -47,6 +47,7 @@ void file_retire(uint16_t id) {
     int prio = tcb->prio_actuelle;
 
     if (_tetes[prio] == MAX_TACHES_NOYAU) return; // Sécurité
+    if (tcb->id_suivant == MAX_TACHES_NOYAU) return; // Sécurité : Vérifier que la tâche est bien dans la boucle
 
     if (tcb->id_suivant == id) {
         // C'était la seule tâche

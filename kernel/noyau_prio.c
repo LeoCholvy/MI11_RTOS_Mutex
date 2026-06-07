@@ -372,6 +372,11 @@ void noyau_set_t_prio(int id_tache, int prio) {
         p->prio_actuelle = prio;
     }
 
+    // Si on a augmenté la priorité d'une tâche PRET, on force l'ordonnanceur
+	if (p->status == PRET && prio < noyau_get_t_prio(noyau_get_tc())) {
+		schedule();
+	}
+
     _unlock_();
 }
 
