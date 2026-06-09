@@ -354,36 +354,63 @@ NOYAU_TCB* noyau_get_p_tcb(uint16_t tcb_nb){
 }
 
 /*-------------------------------------------------------------------------*
- * --- Primitives pour l'héritage de priorité (Mutex) ---           *
+ * --- Primitives pour l'héritage de priorité (Mutex) ---                  *
+ * Ces fonctions permettent la gestion dynamique des priorités des tâches, *
+ * mécanisme indispensable pour éviter les inversions de priorité.         *
  *-------------------------------------------------------------------------*/
 
+/*
+ * Modifie dynamiquement la priorité actuelle d'une tâche.
+ * Gère le repositionnement de la tâche dans les tourniquets de l'ordonnanceur
+ * et déclenche une préemption si nécessaire.
+ */
 void noyau_set_t_prio(int id_tache, int prio) {
     NOYAU_TCB *p = noyau_get_p_tcb(id_tache);
-    _lock_();
 
-    // Si la tâche est dans un tourniquet (donc PRET), il faut la retirer
-    // temporairement pour l'insérer dans le tourniquet de sa nouvelle priorité
+    _lock_(); // Section critique : on modifie les structures internes de l'ordonnanceur
+
+    // Cas 1 : La tâche est actuellement gérée par les tourniquets (prête ou en cours d'exécution)
     if (p->status == PRET || p->status == EXEC) {
+        // Il est indispensable de la retirer de son tourniquet actuel AVANT
+        // de changer sa priorité, sinon la liste chaînée de l'ancienne priorité serait corrompue.
         file_retire(id_tache);
         p->prio_actuelle = prio;
+        // On la replace dans le tourniquet correspondant à sa nouvelle priorité.
         file_ajoute(id_tache);
     } else {
-        // Sinon, on met juste à jour la variable, elle s'insérera au bon endroit à son réveil
+        // Cas 2 : La tâche est bloquée ou endormie (elle n'est dans aucun tourniquet).
+        // On met simplement à jour sa variable. Lorsqu'elle sera réveillée,
+        // la fonction de réveil l'insérera naturellement dans le bon tourniquet.
         p->prio_actuelle = prio;
     }
 
-    // Si on a augmenté la priorité d'une tâche PRET, on force l'ordonnanceur
-	if (p->status == PRET && prio < noyau_get_t_prio(noyau_get_tc())) {
-		schedule();
-	}
+    // Vérification de préemption :
+    // Si la tâche modifiée est PRÊTE et que sa NOUVELLE priorité est plus forte
+    // (valeur numérique plus faible) que celle de la tâche actuellement en cours d'exécution.
+    if (p->status == PRET && prio < noyau_get_t_prio(noyau_get_tc())) {
+        // On force un appel à l'ordonnanceur pour que la tâche boostée
+        // prenne immédiatement le CPU.
+        schedule();
+    }
 
     _unlock_();
 }
 
+/*
+ * Retourne la priorité dynamique (actuelle) d'une tâche.
+ * C'est cette valeur qui est lue par l'ordonnanceur pour les tourniquets,
+ * et qui peut avoir été augmentée par héritage.
+ */
 int noyau_get_t_prio(int id_tache) {
     return noyau_get_p_tcb(id_tache)->prio_actuelle;
 }
 
+/*
+ * Retourne la priorité de base (statique) d'une tâche.
+ * Cette valeur est définie à la création de la tâche et ne change jamais.
+ * Elle est indispensable pour restaurer la priorité d'une tâche après
+ * qu'elle ait relâché un mutex (fin de l'héritage de priorité).
+ */
 int noyau_get_t_base_prio(int id_tache) {
     return noyau_get_p_tcb(id_tache)->prio_base;
 }

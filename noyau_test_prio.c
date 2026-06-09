@@ -9,16 +9,15 @@
 
 // Variables globales
 int mutex_rec;
-int mutex_dyn;
+int bus_mutex;
 int id_tache_A; // Nécessaire pour que C puisse changer la priorité de A
 
-// Fon
 void busy_wait(int iterations) {
     for(volatile int i = 0; i < iterations; ++i);
 }
 
 /* ========================================================================= *
- * PHASE 1 : TEST DU MUTEX RÉCURSIF
+ * PHASE 1 : TEST DU MUTEX RÉCURSIF (Générique)
  * ========================================================================= */
 TACHE tacheRecursif(void *arg) {
     delay(5); // Démarre au tic 5
@@ -35,59 +34,60 @@ TACHE tacheRecursif(void *arg) {
     printf("\n[REC] Je relache la 2eme fois.");
     m_release(mutex_rec);
 
-    while(1) { delay(1000); } // S'endort définitivement
+    while(1) { delay(1000); } // S'endort définitivement pour ne pas gêner la suite
 }
 
 /* ========================================================================= *
- * PHASE 2 : TEST DE L'INVERSION ET DE L'HERITAGE DE PRIORITE
+ * PHASE 2 : SCENARIO PATHFINDER (INVERSION ET HERITAGE DE PRIORITE)
  * ========================================================================= */
-TACHE tacheLow(void *arg) {
+TACHE tacheMeteo(void *arg) {
     delay(20);
-    printf("\n\n--- PHASE 2 : HERITAGE DE PRIORITE ---");
-    printf("\n[LOW-6] Prend le mutex.");
-    m_acquire(mutex_dyn);
+    printf("\n\n--- PHASE 2 : SCENARIO PATHFINDER (HERITAGE DE PRIORITE) ---");
+    printf("\n[METEO-6] Prend le bus_mutex.");
+    m_acquire(bus_mutex);
 
-    // On augmente drastiquement la boucle pour s'assurer que LOW
-    // se fasse rattraper par le réveil de MED et HIGH
+    // Simulation d'un temps d'exécution long sur le bus
     for (int i = 0; i < 20; i++) {
         busy_wait(20000000);
-        // L'affichage de la priorité ici va te prouver l'héritage !
-        printf("\n[LOW] (Prio %d) Travaille dans la zone critique...", noyau_get_t_prio(noyau_get_tc()));
+        printf("\n[METEO] (Prio actuelle: %d) Transmet les donnees sur le bus 1553...", noyau_get_t_prio(noyau_get_tc()));
     }
 
-    printf("\n[LOW-6] Zone critique terminee. Je relache le mutex.");
-    m_release(mutex_dyn);
+    printf("\n[METEO-6] Transmission terminee. Relache le bus_mutex.");
+    m_release(bus_mutex);
     while(1) { delay(1000); }
 }
 
-TACHE tacheMed(void *arg) {
-    delay(22); // <-- MED se réveille presque tout de suite après LOW
-    printf("\n[MED-3] Arrive et tente de monopoliser le CPU !");
+TACHE tacheRadio(void *arg) {
+    delay(22);
+    printf("\n[RADIO-3] Arrive et tente de monopoliser le CPU (Inversion de priorite) !");
 
-    while(1) {
+    // CORRECTION ICI : Une boucle finie pour éviter de déborder sur la Phase 3
+    for(int i = 0; i < 15; i++) {
         busy_wait(20000000);
-        printf("\n[MED] Execute...");
+        printf("\n[RADIO] Execute les communications...");
     }
+    printf("\n[RADIO-3] Fin des communications. S'endort.");
+    while(1) { delay(1000); }
 }
 
-TACHE tacheHigh(void *arg) {
-    delay(25); // <-- HIGH se réveille juste après, pendant que MED monopolise
-    printf("\n[HIGH-1] Arrive et bloque sur le mutex detenu par LOW.");
+TACHE tacheDistribDonnees(void *arg) {
+    delay(25);
+    printf("\n[DISTRIB_DONNEES-1] Arrive et bloque sur le bus_mutex detenu par METEO.");
 
-    m_acquire(mutex_dyn);
-    printf("\n[HIGH-1] Mutex acquis ! LOW a bien ete boostee pour me le rendre.");
-    m_release(mutex_dyn);
+    m_acquire(bus_mutex);
+    printf("\n[DISTRIB_DONNEES-1] Mutex acquis ! METEO a bien ete boostee pour me le rendre.");
+    m_release(bus_mutex);
 
     while(1) { delay(1000); }
 }
 
 /* ========================================================================= *
- * PHASE 3 : TEST MANUEL DES TOURNIQUETS (Boucles Infinies)
+ * PHASE 3 : TEST MANUEL DES TOURNIQUETS (Générique)
  * ========================================================================= */
 TACHE tacheA(void *arg) {
     delay(80);
     printf("\n\n--- PHASE 3 : TEST DES TOURNIQUETS (A, B, C) ---");
-    printf("\n[A-6] Demarre. Boucle infinie...");
+    printf("\n[A-6] Demarre. Boucle infinie...\n");
     while(1) {
         busy_wait(20000000);
         printf("A");
@@ -96,7 +96,7 @@ TACHE tacheA(void *arg) {
 
 TACHE tacheB(void *arg) {
     delay(90);
-    printf("\n[B-3] Preempte A. Boucle infinie...");
+    printf("\n[B-3] Preempte A. Boucle infinie...\n");
     while(1) {
         busy_wait(20000000);
         printf("B");
@@ -105,7 +105,7 @@ TACHE tacheB(void *arg) {
 
 TACHE tacheC(void *arg) {
     delay(100);
-    printf("\n[C-1] Preempte B. Booste A a 1. Boucle infinie...");
+    printf("\n[C-1] Preempte B. Booste A a 1. Boucle infinie...\n");
 
     // On booste la priorité de A au niveau de C (niveau 1)
     noyau_set_t_prio(id_tache_A, 1);
@@ -125,17 +125,17 @@ TACHE tachedefond(void *arg) {
 
     m_init();
     mutex_rec = m_create();
-    mutex_dyn = m_create();
+    bus_mutex = m_create();
 
     // Lancement Phase 1
     active(cree(tacheRecursif, 5, NULL));
 
-    // Lancement Phase 2
-    active(cree(tacheHigh, 1, NULL));
-    active(cree(tacheMed,  3, NULL));
-    active(cree(tacheLow,  6, NULL));
+    // Lancement Phase 2 (Pathfinder)
+    active(cree(tacheDistribDonnees, 1, NULL));
+    active(cree(tacheRadio,          3, NULL));
+    active(cree(tacheMeteo,          6, NULL));
 
-    // Lancement Phase 3 (On sauvegarde l'ID de A)
+    // Lancement Phase 3
     id_tache_A = cree(tacheA, 6, NULL);
     active(id_tache_A);
     active(cree(tacheB, 3, NULL));
